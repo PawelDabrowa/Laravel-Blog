@@ -2,64 +2,44 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Support\Facades\File;
-use Spatie\YamlFrontMatter\YamlFrontMatter;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 
-class Post {
+class Post extends Model
+{
+    use HasFactory;
 
-  public $title;
+    protected $guarded = [];
 
-  public $excerpt;
+    protected $with = ['category', 'author'];
 
-  public $date;
+    // protected $fillable = ['title', 'excerpt', 'body', 'slug', 'category_id'];
 
-  public $body;
+    public function scopeFilter($query, array $filters) {
 
-  public function __construct($title, $excerpt, $date, $body, $slug) {
+        if($filters['search'] ?? false) {
+            $query
+            ->where('title', 'like', '%' . request('search') . '%')
+            ->orWhere('body', 'like', '%' . request('search') . '%');
+        };
 
-    $this->title = $title;
-    $this->excerpt = $excerpt;
-    $this->date = $date;
-    $this->body = $body;
-    $this->slug = $slug;
-  }
+        $query->when($filters['category'] ?? false, fn($query, $category) =>
+            $query->whereHas('category', fn($query) =>
+                $query->where('slug', $category))
+        );
 
-
-
-  public static function all() {
-
-    return cache()->rememberForever('posts.all', function () {
-
-      return collect(File::files(resource_path("posts")))
-
-      ->map(fn($file) => YamlFrontMatter::parseFile($file))
-   
-      ->map(fn($document) => new Post (
-          $document->title,
-          $document->excerpt,
-          $document->date,
-          $document->body(),
-          $document->slug,
-      ))
-      ->sortByDesc('date');
-
-    });
-  }
-
-
-  public static function find($slug) {
-    return static::all()->firstWhere('slug', $slug);
-  }
-
-  public static function findOrFail($slug) {
-    
-    $post =  static::find($slug);
-
-    if(! $post) {
-      throw new ModelNotFoundException();
+        $query->when($filters['author'] ?? false, fn($query, $author) =>
+        $query->whereHas('author', fn($query) =>
+            $query->where('username', $author))
+         );
+         
     }
 
-    return $post;
-  }
+    public function category() {
+        return $this->belongsTo(Category::class);
+    }
+
+    public function author() {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 }
